@@ -74,9 +74,9 @@ x86_64_memory_setup_page_tables:
     popq    %rbp
     ret
 
-# Setup hardware isolation boundaries
+# Setup x86_64 hardware isolation boundaries using available CPU features
 # Parameters: RDI = pointer to IsolationConfiguration structure
-# Returns: 0 on success, negative error code on failure  
+# Returns: 0 on success, negative error code on failure
 x86_64_isolation_setup_hardware_boundaries:
     # Save registers
     pushq   %rbp
@@ -84,28 +84,80 @@ x86_64_isolation_setup_hardware_boundaries:
     pushq   %rbx
     pushq   %rcx
     pushq   %rdx
+    pushq   %rsi
     
     # Validate isolation configuration pointer
     testq   %rdi, %rdi
     jz      .Liso_invalid_config
     
-    # Setup hardware isolation using available CPU features
-    # This would include SMEP, SMAP, memory protection keys, etc.
+    # Store configuration pointer
+    movq    %rdi, %rbx
     
-    # Check for Memory Protection Keys (MPK) support
+    # Check for Memory Protection Keys (MPK/PKU) support
     movq    $7, %rax
     xorq    %rcx, %rcx
     cpuid
-    testl   $0x8, %ecx             # Check PKU bit
-    jz      .Liso_no_mpk
+    testl   $0x8, %ecx             # Check PKU bit in ECX
+    jz      .Liso_check_smep_smap
     
-    # Enable Memory Protection Keys
+    # Enable Memory Protection Keys for isolation
     movq    %cr4, %rax
     orq     $0x400000, %rax        # Enable PKE bit (bit 22)
     movq    %rax, %cr4
     
-.Liso_no_mpk:
-    # Success
+    # Initialize PKRU (Protection Key Rights Register) for isolation
+    xorq    %rax, %rax             # Clear PKRU
+    xorq    %rcx, %rcx
+    xorq    %rdx, %rdx
+    # Set protection keys for isolation boundaries
+    orl     $0xAAAAAAAA, %eax      # Alternate read/write permissions
+    wrpkru                         # Write to PKRU register
+    
+.Liso_check_smep_smap:
+    # Enable SMEP (Supervisor Mode Execution Prevention)
+    movq    $1, %rax
+    cpuid
+    testl   $0x100000, %ecx        # Check SMEP support in ECX
+    jz      .Liso_check_smap
+    
+    movq    %cr4, %rax
+    orq     $0x100000, %rax        # Enable SMEP bit (bit 20)
+    movq    %rax, %cr4
+    
+.Liso_check_smap:
+    # Enable SMAP (Supervisor Mode Access Prevention)
+    movq    $7, %rax
+    xorq    %rcx, %rcx
+    cpuid
+    testl   $0x100000, %ebx        # Check SMAP support in EBX
+    jz      .Liso_check_cet
+    
+    movq    %cr4, %rax
+    orq     $0x200000, %rax        # Enable SMAP bit (bit 21)
+    movq    %rax, %cr4
+    
+.Liso_check_cet:
+    # Check for Control-flow Enforcement Technology (CET)
+    movq    $7, %rax
+    xorq    %rcx, %rcx
+    cpuid
+    testl   $0x80, %ecx            # Check CET support
+    jz      .Liso_success
+    
+    # Enable CET Shadow Stack
+    movq    $0x6A2, %rcx           # MSR_IA32_U_CET
+    rdmsr
+    orl     $0x1, %eax             # Enable SHSTK_EN
+    wrmsr
+    
+    # Enable CET Indirect Branch Tracking
+    movq    $0x6A0, %rcx           # MSR_IA32_S_CET  
+    rdmsr
+    orl     $0x3, %eax             # Enable ENDBR_EN and BTI_EN
+    wrmsr
+    
+.Liso_success:
+    # All isolation features enabled successfully
     xorq    %rax, %rax             # Return 0 for success
     jmp     .Liso_cleanup
     
@@ -115,6 +167,7 @@ x86_64_isolation_setup_hardware_boundaries:
     
 .Liso_cleanup:
     # Restore registers
+    popq    %rsi
     popq    %rdx
     popq    %rcx
     popq    %rbx
