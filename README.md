@@ -1,21 +1,17 @@
 # CIBIOS: Complete Isolation Basic Input/Output System
-**Boot Firmware Foundation for Universal Privacy Protection**
+**Boot Firmware Foundation — Establishing the Isolation Base**
 
-## The Firmware Revolution: Security from Power-On
+## The Firmware Revolution: Isolation from Power-On
 
-The Complete Isolation Basic Input/Output System (CIBIOS) is boot firmware that establishes isolation guarantees from the moment hardware powers on, creating the hardware foundation on which CIBOS builds its operating environment. CIBIOS implements the Hybrid Isolation Paradigm's architectural principles at the firmware layer, ensuring that the isolation properties CIBOS relies on are hardware-established before any operating system code executes.
+The Complete Isolation Basic Input/Output System (CIBIOS) is boot firmware that establishes HIP's isolation guarantees from the moment hardware powers on, creating the hardware foundation on which CIBOS builds its operating environment. CIBIOS implements HIP's architectural principles at the firmware layer, ensuring that the isolation properties CIBOS relies on are hardware-established before any operating system code executes.
 
-Traditional firmware operates on trust-based models where each component must trust every other component, creating cascade failure scenarios where compromise of any element undermines entire system security. When conventional computers start, BIOS or UEFI firmware trusts the bootloader, which trusts the operating system kernel, creating dependency chains where system security depends on the trustworthiness of every individual component in sequence. Compromise at any link breaks the entire chain.
+Traditional firmware operates on trust-based models where each component must trust every other component, creating cascade failure scenarios. CIBIOS eliminates foundational vulnerabilities by implementing isolation principles at firmware level. Rather than depending on trust relationships, CIBIOS establishes hardware-enforced isolation boundaries, performs cryptographic or lightweight verification depending on the configured profile, and transfers control to CIBOS in a state where isolation is already active — not requested by the OS, but established by the firmware before the OS begins. CIBOS inherits isolation as a starting condition.
 
-CIBIOS eliminates foundational vulnerabilities by implementing isolation principles at firmware level. Rather than depending on trust relationships, CIBIOS establishes hardware-enforced isolation boundaries, performs cryptographic or lightweight verification depending on the configured profile, and transfers control to CIBOS in a state where isolation is already active — not requested by the OS, but established by the firmware before the OS begins. CIBOS inherits isolation as a starting condition, not as something it must set up for itself.
-
-CIBIOS is designed to boot CIBOS. These two systems are architected together as a complete stack. CIBIOS establishes the hardware foundation; CIBOS builds the execution environment on top of that foundation. They share a build system, feature flags, and architectural principles derived from HIP.
+CIBIOS is designed to boot CIBOS. These two systems are architected together as a complete stack sharing a build system, feature flags, and architectural principles derived from HIP.
 
 ---
 
 ## HIP at the Firmware Layer
-
-CIBIOS implements HIP's architectural principles at firmware level. The isolation properties that CIBOS relies on are established before any operating system code executes.
 
 Before kernel execution, CIBIOS establishes:
 - Memory isolation boundaries between regions
@@ -25,35 +21,29 @@ Before kernel execution, CIBIOS establishes:
 - SMT configuration appropriate to the profile
 - Hardware configuration record for CIBOS to inherit
 
-The handoff mode — whether CIBIOS transfers control to CIBOS using cryptographic verification or lightweight handshake — is a shared build-time feature. CIBIOS and CIBOS are compiled together with matching handoff configuration, ensuring they agree on the protocol by construction rather than by runtime negotiation.
+The handoff mode is a shared build-time feature. CIBIOS and CIBOS are compiled together with matching handoff configuration, ensuring they agree on the protocol by construction.
 
 ---
 
 ## CIBIOS Profiles
 
-CIBIOS provides two build-time profiles. Profiles are Rust feature flag configurations selected at build time, not options presented during installation. The binary is already configured when built. Changing profiles requires rebuilding.
+CIBIOS provides two build-time profiles. Profiles are Rust feature flag configurations selected at build time. The binary is already configured when built.
 
 ### CIBIOS Standard Profile
 
-**Purpose:** Systems that need boot-level cryptographic verification of the operating system image. Appropriate for multi-user systems, networked systems, and any system where boot chain integrity is a security requirement.
+**Purpose:** Systems needing boot-level cryptographic verification. Appropriate for multi-user systems, networked systems, any system where boot chain integrity is a security requirement.
 
 **What Is Compiled In:**
 - Cryptographic verification of the CIBOS kernel image before handoff
 - Full boot component integrity verification chain
 - Cryptographic entropy source for initialization randomness
-- Hardware vendor features disabled unless explicitly added as additional feature flags
+- Hardware vendor features disabled unless explicitly added
 - Complete isolation boundary establishment before kernel execution
 - SMT disabled by default
 
 **How Handoff Works:**
 
-CIBIOS Standard performs cryptographic verification of the CIBOS binary before transferring control. CIBIOS computes a hash of the loaded CIBOS image, verifies the hash against a signature using the public key embedded in firmware at build time, and proceeds only if verification succeeds. If verification fails, boot stops with a diagnostic message. A CIBOS binary compiled with mismatched feature flags will have a different hash and signature than what CIBIOS expects, causing boot to fail. This makes profile pairings self-enforcing.
-
-**Appropriate Deployment Contexts:**
-- Enterprise servers
-- Multi-user workstations
-- Network-connected personal systems
-- Any system where boot integrity is a security requirement
+CIBIOS Standard computes a hash of the loaded CIBOS image, verifies it against a signature using the public key embedded in firmware at build time, and proceeds only if verification succeeds. If verification fails, boot stops with a diagnostic message. A CIBOS binary compiled with mismatched feature flags will have a different hash, causing boot to fail. This makes profile pairings self-enforcing.
 
 **Pairs with CIBOS profiles:** Maximum Isolation, Balanced, Performance
 
@@ -75,30 +65,72 @@ CIBIOS Standard performs cryptographic verification of the CIBOS binary before t
 
 **How Handoff Works:**
 
-CIBIOS Lightweight loads the CIBOS kernel into memory, establishes isolation boundaries, writes hardware configuration parameters to an agreed memory location, and transfers control to the CIBOS entry point. No signatures are verified. Trust is established by the physical environment: in a physically secured single-user system, the only entity loading software onto the boot media is the trusted user.
+CIBIOS Lightweight loads the CIBOS kernel, establishes isolation boundaries, writes hardware configuration parameters to an agreed memory location, and transfers control to the CIBOS entry point. No signatures are verified. Trust is established by the physical environment: in a physically secured single-user system, the only entity loading software onto boot media is the trusted user.
 
-**Why This Is Not a Security Compromise:**
-A cryptographic verification chain protects against an adversary who could modify the CIBOS binary without physical access to the boot media. In a physically secured single-user air-gapped system, this adversary does not exist. Cryptographic verification in this context adds overhead without protecting against any realistic threat. Lightweight profile is correct threat modeling.
-
-**Appropriate Deployment Contexts:**
-- Air-gapped research and computation systems
-- Single-user offline computation environments
-- Physically secured development platforms
+**Why This Is Not a Security Compromise:** A cryptographic verification chain protects against an adversary who could modify the CIBOS binary without physical access to boot media. In a physically secured single-user air-gapped system, this adversary does not exist. Lightweight profile is correct threat modeling.
 
 **Pairs with CIBOS profiles:** Compute, Performance (offline)
+
+### Profile Pairing
+
+CIBIOS and CIBOS are compiled together as a pair. The handoff mode ensures they agree on the protocol.
+
+| CIBIOS Profile | Valid CIBOS Profiles | Reason |
+|---|---|---|
+| Standard | Maximum Isolation, Balanced, Performance | Cryptographic handoff requires matching key |
+| Lightweight | Compute (Performance offline) | Lightweight handoff; security features absent by design |
+
+When CIBIOS Standard attempts to boot a CIBOS Compute binary: CIBIOS computes hash of CIBOS image; hash won't match expected signature; boot fails. This is intentional.
+
+```
+PROFILE PAIRING:
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                      │   │
+│  │  CIBIOS Standard          CIBIOS Lightweight                         │   │
+│  │  ┌─────────────────┐      ┌─────────────────┐                        │   │
+│  │  │ Cryptographic   │      │ Lightweight     │                        │   │
+│  │  │ Handoff         │      │ Handoff         │                        │   │
+│  │  │ SMT: Disabled   │      │ SMT: Enabled    │                        │   │
+│  │  │ by default      │      │ by default      │                        │   │
+│  │  └────────┬────────┘      └────────┬────────┘                        │   │
+│  │           │                        │                                  │   │
+│  │           ▼                        ▼                                  │   │
+│  │  ┌─────────────────┐      ┌─────────────────┐                        │   │
+│  │  │ CIBOS           │      │ CIBOS           │                        │   │
+│  │  │ ─────────────   │      │ ─────────────   │                        │   │
+│  │  │ Max Isolation   │      │ Compute         │                        │   │
+│  │  │ Balanced        │      │ Performance     │ (offline only)         │   │
+│  │  │ Performance     │      │                 │                        │   │
+│  │  └─────────────────┘      └─────────────────┘                        │   │
+│  │                                                                      │   │
+│  │  ✓ Compatible             ✓ Compatible                               │   │
+│  │  (Same handoff mode)      (Same handoff mode)                        │   │
+│  │                                                                      │   │
+│  │  ┌────────────────────────────────────────────────────────────────┐  │   │
+│  │  │  CIBIOS Standard + CIBOS Compute = BOOT FAILURE                │  │   │
+│  │  │  (Signature won't match — intentional self-enforcement)         │  │   │
+│  │  └────────────────────────────────────────────────────────────────┘  │   │
+│  │                                                                      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
 ## SMT Configuration at Boot
 
-CIBIOS configures Simultaneous Multithreading (SMT) at boot before transferring control to CIBOS. CIBOS inherits the SMT configuration established by CIBIOS.
+CIBIOS configures SMT at boot before transferring control to CIBOS. CIBOS inherits the SMT configuration established by CIBIOS.
 
 | CIBIOS Profile | SMT Default | Reason |
 |---|---|---|
 | Standard | Disabled | Adversarial environments require hardware side-channel elimination |
 | Lightweight | Enabled | Air-gapped environments maximize computation throughput |
 
-SMT configuration is part of the hardware state CIBIOS establishes. The hardware configuration record written by CIBIOS includes SMT status so CIBOS can accurately report execution context count.
+SMT configuration is part of the hardware state CIBIOS establishes. The hardware configuration record includes SMT status and core counts so CIBOS can accurately report execution context count.
 
 ---
 
@@ -106,31 +138,24 @@ SMT configuration is part of the hardware state CIBIOS establishes. The hardware
 
 ### The Default: Native Isolation Only
 
-By default, all CIBIOS profiles use native firmware-level isolation that:
-- Operates independently of all vendor proprietary code
-- Provides identical isolation guarantees across all platforms
-- Can be fully audited as open-source code
-- Does not activate hardware vendor stacks below firmware level
-
-Hardware vendor features introduce proprietary code into the trust model. This is the recommended configuration for all deployments.
+By default, all CIBIOS profiles use native firmware-level isolation that operates independently of all vendor proprietary code, provides identical isolation guarantees across all platforms, can be fully audited as open-source code, and does not activate hardware vendor stacks below firmware level. This is the recommended configuration for all deployments.
 
 ### Intel VT-x
 
-Intel Management Engine operates at a privilege level below firmware. Enabling VT-x activates Intel's virtualization stack which interacts with the Management Engine. Intel's virtualization components are proprietary and cannot be fully audited. The security model becomes partially dependent on Intel's undisclosed firmware when this feature is enabled.
+Intel Management Engine operates at a privilege level below firmware. Enabling VT-x activates Intel's virtualization stack which interacts with the Management Engine. Intel's virtualization components are proprietary and cannot be fully audited. The security model becomes partially dependent on Intel's undisclosed firmware.
 
 ### AMD SVM
 
-AMD Platform Security Processor operates below firmware level. SVM activation interacts with AMD's secure processor stack. AMD's secure processor code is proprietary and unauditable.
+AMD Platform Security Processor operates below firmware level. SVM activation interacts with AMD's secure processor stack.
 
 ### ARM TrustZone
 
-ARM Trusted Firmware gains execution privileges above the operating system when TrustZone is activated. TrustOS is proprietary ARM firmware executing in the secure world. TrustZone activation means ARM's proprietary code enforces some security boundaries alongside CIBIOS.
+ARM Trusted Firmware gains execution privileges above the operating system when TrustZone is activated. TrustOS is proprietary ARM firmware executing in the secure world.
 
 ### When Hardware Vendor Features May Be Appropriate
 
-Hardware vendor features may be considered when performance requirements justify the vendor trust trade-off, when specific workloads benefit significantly from hardware virtualization, and when users explicitly understand and accept the security implications. These features are never enabled by default and require explicit addition as feature flags at build time.
+Hardware vendor features may be considered when performance requirements justify the vendor trust trade-off and users explicitly understand and accept the security implications. These features are never enabled by default and require explicit addition as feature flags:
 
-**Enabling hardware vendor features:**
 - `hardware-vendor-vtx` — Intel VT-x (documented trust implications apply)
 - `hardware-vendor-svm` — AMD SVM (documented trust implications apply)
 - `hardware-vendor-trustzone` — ARM TrustZone (documented trust implications apply)
@@ -139,29 +164,17 @@ Hardware vendor features may be considered when performance requirements justify
 
 ## Universal Hardware Support
 
-### ARM Architecture Firmware Support
+### ARM Architecture
 
-CIBIOS implements comprehensive ARM processor support enabling universal deployment across mobile devices, embedded systems, single-board computers, and ARM-based servers while providing consistent isolation guarantees regardless of ARM processor capabilities or cost.
+CIBIOS implements comprehensive ARM processor support enabling universal deployment across mobile devices, embedded systems, single-board computers, and ARM-based servers. Mobile firmware initialization includes power management and sensor controller initialization that maintains isolation while enabling necessary mobile functionality.
 
-**Mobile Device Support:** CIBIOS operates across all ARM mobile processors including older smartphones that manufacturers no longer support, extending device lifetime. Mobile firmware initialization includes power management and sensor controller initialization that maintains isolation while enabling necessary mobile functionality.
+### x86 and x64 Architecture
 
-**Embedded System Support:** CIBIOS operates in IoT devices, industrial control systems, and embedded platforms with minimal resource utilization while providing complete isolation guarantees. Embedded optimization maintains isolation effectiveness within resource constraints.
+Intel and AMD processor support provides compatibility across desktop computers, laptops, and servers. CIBIOS enables privacy-focused computing across all x86 hardware including older systems, extending hardware lifetime.
 
-**Single-Board Computer Support:** CIBIOS operates on affordable computing platforms including Raspberry Pi devices, providing privacy protection independent of hardware cost.
+### RISC-V Open Architecture
 
-### x86 and x64 Architecture Firmware Support
-
-Intel and AMD processor support provides CIBIOS compatibility across desktop computers, laptops, and servers while maintaining universal compatibility across processor generations and price ranges.
-
-**Desktop and Laptop Support:** CIBIOS enables privacy-focused computing across all x86 hardware including older systems. Legacy hardware receives the same isolation guarantees as current hardware.
-
-**Server Platform Support:** CIBIOS enables enterprise deployment across all server hardware. Server optimization includes support for high-memory configurations and multi-processor environments.
-
-**Legacy Hardware Extension:** CIBIOS operates effectively on older x86 systems, extending hardware lifetime.
-
-### RISC-V Open Architecture Foundation Firmware
-
-RISC-V processor support ensures CIBIOS compatibility with emerging open-source processor architectures. Open-source hardware integration eliminates concerns about undisclosed surveillance features while providing optimal performance through processor-specific optimization that leverages RISC-V flexibility.
+RISC-V processor support ensures compatibility with emerging open-source processor architectures. Open-source hardware integration eliminates concerns about undisclosed surveillance features.
 
 ---
 
@@ -171,37 +184,120 @@ RISC-V processor support ensures CIBIOS compatibility with emerging open-source 
 
 CIBIOS initialization uses event-driven sequencing consistent with HIP's architectural principles. Each initialization step proceeds when its prerequisites signal completion, not after a fixed time delay. Steps without semantic ordering dependencies proceed in parallel.
 
-Boot time is minimized by parallel initialization where safe. The pattern of event-driven coordination is established at firmware level and inherited by CIBOS.
+```
+CIBIOS INITIALIZATION FLOW:
 
-### Boot Performance
-
-**CIBIOS Standard Profile:** Boot time includes cryptographic verification time, which is bounded and predictable. Total boot time from power-on to CIBOS kernel execution is measured in seconds on modern hardware with fast storage.
-
-**CIBIOS Lightweight Profile:** Boot time excludes cryptographic verification. Under one second from power-on to CIBOS kernel execution on modern hardware with fast storage.
-
----
-
-## Isolation Establishment: The Critical Pre-Kernel Work
-
-CIBIOS's most important function is establishing isolation boundaries before the kernel executes. The isolation properties that CIBOS relies on are not set up by CIBOS itself — they are established by CIBIOS at the hardware level during boot.
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                      │   │
+│  │  POWER ON                                                            │   │
+│  │      │                                                               │   │
+│  │      ▼                                                               │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ CPU Init        │ (Architecture-specific assembly)                │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ BSS Zeroing     │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ Serial Init     │ (Debug output available from here)              │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ Hardware RNG    │ (Check availability)                            │   │
+│  │  │ Check           │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ Hardware        │ (CPU, memory, storage, display)                 │   │
+│  │  │ Detection       │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ Memory          │ (Before any code uses memory)                   │   │
+│  │  │ Isolation       │                                                 │   │
+│  │  │ Boundaries      │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ Lane Memory     │ (Reserve regions CIBOS will use for lanes)      │   │
+│  │  │ Reservation     │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ SMT Config      │ (Per profile: disabled=Standard, enabled=Light) │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ Boot Config     │ (Loading, first-boot detection)                 │   │
+│  │  │ Loading         │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐                                                 │   │
+│  │  │ CIBOS Image     │                                                 │   │
+│  │  │ Loading         │                                                 │   │
+│  │  └────────┬────────┘                                                 │   │
+│  │           │                                                          │   │
+│  │           ▼                                                          │   │
+│  │  ┌─────────────────┐     ┌─────────────────┐                        │   │
+│  │  │ Standard        │     │ Lightweight     │                        │   │
+│  │  │ Profile:        │     │ Profile:        │                        │   │
+│  │  │ Compute SHA-256 │     │ No verification │                        │   │
+│  │  │ Verify Ed25519  │     │ (physical trust)│                        │   │
+│  │  │ signature       │     │                 │                        │   │
+│  │  └────────┬────────┘     └────────┬────────┘                        │   │
+│  │           │                       │                                  │   │
+│  │           └───────────┬───────────┘                                  │   │
+│  │                       │                                              │   │
+│  │                       ▼                                              │   │
+│  │           ┌─────────────────────┐                                    │   │
+│  │           │ Handoff Data        │                                    │   │
+│  │           │ Preparation         │                                    │   │
+│  │           │ - Memory layout     │                                    │   │
+│  │           │ - Isolation state   │                                    │   │
+│  │           │ - SMT status        │                                    │   │
+│  │           │ - Physical cores    │                                    │   │
+│  │           │ - Logical cores     │                                    │   │
+│  │           └──────────┬──────────┘                                    │   │
+│  │                      │                                               │   │
+│  │                      ▼                                               │   │
+│  │           ┌─────────────────────┐                                    │   │
+│  │           │ Transfer Control    │                                    │   │
+│  │           │ to CIBOS Entry      │                                    │   │
+│  │           │ Point — NEVER       │                                    │   │
+│  │           │ RETURNS             │                                    │   │
+│  │           └─────────────────────┘                                    │   │
+│  │                                                                      │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ### What CIBIOS Establishes Before Kernel Handoff
 
-**Memory Isolation Boundaries:**
-CIBIOS configures the memory management hardware to enforce boundaries between memory regions. Kernel memory, application memory, firmware memory, and device memory are separated by hardware-enforced boundaries. These boundaries are in place when CIBOS receives control.
+**Memory Isolation Boundaries:** Hardware memory management configured to enforce boundaries between all memory regions before CIBOS receives control.
 
-**Lane Memory Regions:**
-CIBIOS reserves and initializes the memory regions that CIBOS will use for lane execution contexts. These regions are isolated at the hardware level before CIBOS creates lanes within them.
+**Lane Memory Regions:** CIBIOS reserves and initializes the memory regions CIBOS will use for lane execution contexts, isolated at hardware level.
 
-**SMT Configuration:**
-CIBIOS configures SMT based on profile before CIBOS receives control.
+**SMT Configuration:** Configured based on profile before CIBOS receives control.
 
-**Hardware Configuration Record:**
-CIBIOS writes a complete record of hardware configuration, memory layout, initialized boundaries, and system capabilities (including SMT status and execution context count) to a known memory location. CIBOS reads this record rather than re-detecting hardware state.
+**Hardware Configuration Record:** Complete record of hardware configuration, memory layout, initialized boundaries, and system capabilities (including SMT status, physical core count, logical core count) written to a known memory location. CIBOS reads this record rather than re-detecting hardware state.
 
 ### What CIBIOS Does Not Do During Boot
 
-CIBIOS does not load or initialize user applications. CIBIOS does not configure network interfaces beyond the minimum needed for network boot in profiles that support it. CIBIOS does not establish user profiles or authentication state. These are CIBOS responsibilities.
+CIBIOS does not load or initialize user applications. CIBIOS does not configure network interfaces beyond the minimum for network boot. CIBIOS does not establish user profiles or authentication state. These are CIBOS responsibilities.
 
 ---
 
@@ -209,19 +305,16 @@ CIBIOS does not load or initialize user applications. CIBIOS does not configure 
 
 ### CIBIOS Protects Against
 
-- Software-based attacks that attempt to substitute an unauthorized CIBOS kernel (Standard profile)
-- Compromise of operating system components that attempt to undermine isolation boundaries
+- Software-based attacks attempting to substitute an unauthorized CIBOS kernel (Standard profile)
+- Compromise of OS components attempting to undermine isolation boundaries
 - Software exploitation of initialization state before isolation is established
-- Unauthorized operating system modification (Standard profile only)
 
 ### CIBIOS Cannot Prevent
 
-- Hardware-level surveillance mechanisms operating below firmware level (Intel ME, AMD PSP, etc.)
+- Hardware-level surveillance mechanisms operating below firmware level (Intel ME, AMD PSP)
 - Hardware vulnerabilities in the processor itself
 - Physical tampering with hardware components after manufacturing
 - Attack vectors requiring only physical access to storage media (Lightweight profile — addressed by trust model)
-
-This is honest documentation. CIBIOS provides strong guarantees against software-based attacks. Hardware-level constraints apply to all software-enforced security systems, not uniquely to CIBIOS.
 
 ---
 
@@ -229,34 +322,49 @@ This is honest documentation. CIBIOS provides strong guarantees against software
 
 ### Shared Feature Flags
 
-Some feature flags apply to both CIBIOS and CIBOS simultaneously because they describe the handoff protocol both must agree on:
+Some feature flags apply to both CIBIOS and CIBOS simultaneously:
 
 - `handoff-cryptographic` — CIBIOS verifies CIBOS signature; CIBOS provides its signature for verification
 - `handoff-lightweight` — CIBIOS accepts CIBOS without cryptographic verification; CIBOS does not generate verification signature
 
-These flags are defined at the workspace root level and automatically applied to both CIBIOS and CIBOS builds. Building the two components together with mismatched handoff flags is caught at compile time by the type system.
+These flags are defined at the workspace root level and automatically applied to both CIBIOS and CIBOS builds. Mismatched handoff flags are caught at compile time by the type system.
 
 ### Preventing Mismatched Binaries
 
-**Standard profile prevents mismatch:** A CIBIOS Standard binary computes the hash of whatever CIBOS binary is loaded and verifies it against the expected signature. A CIBOS binary built with a different feature configuration has a different hash. Boot fails with a verification error when binaries are mismatched.
+**Standard profile:** A CIBIOS Standard binary computes the hash of whatever CIBOS binary is loaded and verifies against the expected signature. A CIBOS binary built with different feature configuration has a different hash. Boot fails with a verification error.
 
-**Lightweight profile accepts any valid kernel:** Because no signature verification occurs, CIBIOS Lightweight will transfer control to any valid CIBOS binary. This is acceptable in the lightweight context because the threat model assumes the user controls boot media.
+**Lightweight profile:** No signature verification occurs. CIBIOS Lightweight will transfer control to any valid CIBOS binary. Acceptable because the threat model assumes the user controls boot media.
+
+---
+
+## no_std: Bare-Metal Firmware Implementation
+
+CIBIOS is bare-metal firmware. It requires:
+
+```rust
+#![no_std]
+#![no_main]
+#![feature(alloc_error_handler)]
+```
+
+CIBIOS provides a bump allocator (never frees; ~2MB heap — all memory reclaimed at CIBOS handoff). CIBIOS provides its own panic handler (writes to serial, halts). Hardware RNG is accessed directly:
+- x86_64: RDRAND instruction (check CPUID leaf 1, ECX bit 30)
+- ARM64: RNDR system register (check ID_AA64ISAR0_EL1)
+- RISC-V: SEED CSR from Zkr extension
+
+No async/await in CIBIOS. All functions synchronous. All errors returned as `Result<T, FirmwareError>`. `anyhow` requires `std` and is not used.
 
 ---
 
 ## Development Roadmap
 
-**Phase 1: Core Firmware Architecture Development (Months 1 to 8)**
-Core firmware development establishes foundational CIBIOS architecture including hardware initialization, isolation boundary establishment, hardware abstraction, SMT configuration, and universal compatibility across supported processor architectures. Both handoff modes implemented and validated.
+**Phase 1 (Months 1-8):** Core firmware architecture — hardware initialization, isolation boundary establishment, SMT configuration, universal compatibility across all supported processor architectures. Both handoff modes implemented and validated.
 
-**Phase 2: Isolation Establishment and Validation (Months 6 to 14)**
-Comprehensive testing of isolation boundary establishment across all supported hardware platforms. Validation that isolation state is correctly inherited by CIBOS. Performance optimization of boot sequences for both profiles. Hardware vendor feature implementation for opt-in use.
+**Phase 2 (Months 6-14):** Comprehensive testing of isolation boundary establishment across all supported hardware platforms. Performance optimization of boot sequences. Hardware vendor feature implementation for opt-in use.
 
-**Phase 3: Multi-Platform Integration and Validation (Months 12 to 20)**
-Multi-platform validation across ARM, x86, x64, and RISC-V platforms. Performance validation demonstrating boot time targets. Security validation of cryptographic verification chain. Compatibility testing with CIBOS profiles.
+**Phase 3 (Months 12-20):** Multi-platform validation across ARM, x86, x64, and RISC-V. Security validation of cryptographic verification chain. Compatibility testing with CIBOS profiles.
 
-**Phase 4: Community Development and Production Deployment (Months 18 to 24)**
-Open-source collaboration infrastructure. Community contribution frameworks. Production deployment validation. Documentation completion.
+**Phase 4 (Months 18-24):** Open-source collaboration infrastructure. Production deployment validation. Documentation completion.
 
 ---
 
@@ -266,20 +374,7 @@ CIBIOS's principles — event-driven initialization, isolation boundary establis
 
 ---
 
-## Conclusion
-
-CIBIOS represents a fundamental reimagining of boot firmware that establishes privacy and security guarantees before the operating system begins. By implementing HIP's isolation principles at the firmware layer, CIBIOS ensures that the isolation properties CIBOS depends on are hardware-established rather than software-requested.
-
-Two profiles serve distinct deployment contexts with appropriate security-overhead trade-offs: Standard profile for cryptographic boot verification in adversarial environments, Lightweight profile for minimal-overhead boot in physically secured single-user environments.
-
-Universal hardware support across ARM, x86, x64, and RISC-V ensures that privacy protection is independent of hardware cost, extending the democratic access to privacy that CIBOS provides at the operating system layer down to the firmware foundation.
-
----
-
 **Project Repository:** github.com/cibos/complete-isolation-bios
-**Documentation:** docs.cibios.org | **Community:** community.cibios.org
-**Development Status:** Core architecture development and multi-platform validation phase
+**Supported Architectures:** ARM, x64, x86, RISC-V
 **Profiles:** Standard (cryptographic handoff), Lightweight (lightweight handshake)
-**Supported Architectures:** ARM, x64, x86, RISC-V with universal compatibility
-**Hardware Requirements:** Any 32-bit or 64-bit processor with basic memory protection
-**License:** Privacy-focused open source with strong copyleft protections and hardware freedom
+**License:** Privacy-focused open source with strong copyleft protections
